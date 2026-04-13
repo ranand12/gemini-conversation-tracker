@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "name": "tracker-start",
+            "type": "command",
+            "command": "node \"${extensionPath}/scripts/start-script.js\""
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "exit",
+        "hooks": [
+          {
+            "name": "tracker-end",
+            "type": "command",
+            "command": "node \"${extensionPath}/scripts/end-script.js\""
+          }
+        ]
+      }
+    ]
+  }
+}

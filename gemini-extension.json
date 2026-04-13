@@ -1,0 +1,5 @@
+{
+  "name": "gemini-conversation-tracker",
+  "version": "1.0.0",
+  "description": "Automatically tracks Gemini CLI session durations and generates markdown summaries using background processes."
+}
