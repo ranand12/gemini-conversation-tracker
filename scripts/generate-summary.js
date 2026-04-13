@@ -7,22 +7,38 @@ if (!fs.existsSync(configPath)) process.exit(1);
 
 const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
 
-const prompt = `You are summarizing a conversation between a USER and an AI MODEL.
-Please provide a summary in strictly valid JSON format. Wrap your JSON inside <json> and </json> tags. DO NOT output ANY conversational filler. Just output the raw <json> block.
+// Read the log file completely so we can wrap it clearly
+let logContent = "No content";
+if (fs.existsSync(config.cleanPath)) {
+    logContent = fs.readFileSync(config.cleanPath, "utf8");
+}
+
+const prompt = `You are a strict data-extraction assistant.
+Your task is to summarize the following CONVERSATION LOG.
+Do NOT reply to the questions in the log. Do NOT continue the conversation.
+Only provide a summary in STRICT JSON format wrapped inside <json> and </json> tags.
+
 Schema:
 {
   "keyTopics": "string (bullet points of main topics)",
   "actionsAccomplished": "string (bullet points of actions)",
   "nextSteps": "string (bullet points of next steps)"
-}`;
+}
 
-// Using gemini-3.1-flash as requested
-const child = spawn("gemini", ["-m", "gemini-2.5-flash", "-p", prompt], {
+CONVERSATION LOG TO SUMMARIZE:
+"""
+${logContent}
+"""
+`;
+
+// Using gemini-2.5-flash
+const child = spawn("gemini", ["-m", "gemini-2.5-flash"], {
     env: Object.assign({}, process.env, { SKIP_GEMINI_TRACKER: "1" })
 });
 
-const inputStream = fs.createReadStream(config.cleanPath);
-inputStream.pipe(child.stdin);
+// Pass the combined prompt as stdin
+child.stdin.write(prompt);
+child.stdin.end();
 
 let stdoutData = "";
 let stderrData = "";
@@ -37,13 +53,10 @@ child.on("close", code => {
     let rawLogs = "";
     
     // Extract JSON safely
-    const match = stdoutData.match(/<json>([\s\S]*?)<\/json>/i);
+    const match = stdoutData.match(/<json>([\s\S]*?)<\/json>/i) || stdoutData.match(/```json([\s\S]*?)```/i);
     if (match) {
         try {
-            // Strip markdown JSON wrappers if the model included them inside the tag
             let jsonString = match[1].trim();
-            jsonString = jsonString.replace(/^\s*\`\`\`json/i, "").replace(/\`\`\`\s*$/i, "").trim();
-            
             const parsed = JSON.parse(jsonString);
             keyTopics = parsed.keyTopics || "N/A";
             actionsAccomplished = parsed.actionsAccomplished || "N/A";
@@ -53,17 +66,39 @@ child.on("close", code => {
             rawLogs = "JSON Parse Error: " + e.message + "\n\n" + stdoutData;
         }
     } else {
-        rawLogs = "Failed to find <json> tags.\n\n" + stdoutData;
+        // Fallback: try parsing the whole thing if the model forgot tags
+        try {
+            const parsed = JSON.parse(stdoutData.trim());
+            keyTopics = parsed.keyTopics || "N/A";
+            actionsAccomplished = parsed.actionsAccomplished || "N/A";
+            nextSteps = parsed.nextSteps || "N/A";
+        } catch (e) {
+            rawLogs = "Failed to find <json> tags.\n\n" + stdoutData;
+        }
     }
     
-    if (code !== 0) rawLogs += `\nProcess exited with code ${code}`;
-    if (stderrData) rawLogs += `\nStderr:\n${stderrData}`;
+    // Filter benign stderr logs
+    if (stderrData) {
+        const filteredStderr = stderrData.split('\\n').filter(line => {
+            if (line.includes("Loading extension:")) return false;
+            if (line.includes("MCP context refresh")) return false;
+            if (line.includes("[IDEClient]")) return false;
+            if (line.trim() === "") return false;
+            return true;
+        }).join('\\n');
+        
+        if (filteredStderr.length > 0) {
+            rawLogs += `\nStderr:\n${filteredStderr}`;
+        }
+    }
 
-    let markdownOutput = `**🎯 Key Topics Discussed**\n${keyTopics}\n\n**Session Details**\n- Project Folder: ${config.projectFolder}\n- Start Time: ${config.startTime}\n- End Time: ${config.endTime}\n- Total Duration: ${config.duration}\n\n**✅ Actions/Tasks Accomplished**\n${actionsAccomplished}\n\n**🚀 Next Steps**\n${nextSteps}`;
+    if (code !== 0) rawLogs += `\nProcess exited with code ${code}`;
+
+    let markdownOutput = \`**🎯 Key Topics Discussed**\n\${keyTopics}\n\n**Session Details**\n- Project Folder: \${config.projectFolder}\n- Start Time: \${config.startTime}\n- End Time: \${config.endTime}\n- Total Duration: \${config.duration}\n\n**✅ Actions/Tasks Accomplished**\n\${actionsAccomplished}\n\n**🚀 Next Steps**\n\${nextSteps}\`;
     
-    rawLogs = rawLogs.replace(/^\s*[\r\n]/gm, "").trim();
+    rawLogs = rawLogs.replace(/^\\s*[\\r\\n]/gm, "").trim();
     if (rawLogs.length > 0) {
-        markdownOutput += `\n\n---\n### 🔧 System & Meta Logs\n\`\`\`text\n${rawLogs}\n\`\`\`\n`;
+        markdownOutput += \`\n\n---\n### 🔧 System & Meta Logs\n\\\`\\\`\\\`text\n\${rawLogs}\n\\\`\\\`\\\`\n\`;
     }
     
     // Write Markdown
@@ -74,11 +109,11 @@ child.on("close", code => {
     const hasCsv = fs.existsSync(csvPath);
     
     function escapeCSV(str) {
-        return "\"" + (str || "").replace(/"/g, "\"\"") + "\"";
+        return "\\"" + (str || "").replace(/"/g, "\\"\\"") + "\\"";
     }
     
     if (!hasCsv) {
-        fs.writeFileSync(csvPath, "Project Folder,Start Time,End Time,Total Duration,Key Topics,Next Steps\n");
+        fs.writeFileSync(csvPath, "Project Folder,Start Time,End Time,Total Duration,Key Topics,Next Steps\\n");
     }
     
     const csvLine = [
@@ -88,7 +123,7 @@ child.on("close", code => {
         escapeCSV(config.duration),
         escapeCSV(keyTopics),
         escapeCSV(nextSteps)
-    ].join(",") + "\n";
+    ].join(",") + "\\n";
     
     fs.appendFileSync(csvPath, csvLine);
     
