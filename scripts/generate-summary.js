@@ -116,8 +116,14 @@ child.on("close", code => {
 
     if (code !== 0) rawLogs += "\nProcess exited with code " + code;
 
+    function formatField(val) {
+        if (Array.isArray(val)) return val.map(v => "- " + v).join("\n");
+        if (typeof val === "object" && val !== null) return JSON.stringify(val, null, 2);
+        return String(val || "N/A");
+    }
+
     let markdownOutput = `**🎯 Key Topics Discussed**
-${keyTopics}
+${formatField(keyTopics)}
 
 **Session Details**
 - Project Folder: ${config.projectFolder}
@@ -126,10 +132,10 @@ ${keyTopics}
 - Total Duration: ${config.duration}
 
 **✅ Actions/Tasks Accomplished**
-${actionsAccomplished}
+${formatField(actionsAccomplished)}
 
 **🚀 Next Steps**
-${nextSteps}`;
+${formatField(nextSteps)}`;
     
     rawLogs = rawLogs.replace(/^\s*[\r\n]/gm, "").trim();
     if (rawLogs.length > 0) {
@@ -143,8 +149,9 @@ ${nextSteps}`;
     const csvPath = path.join(config.centralDir, "tracker_database.csv");
     const hasCsv = fs.existsSync(csvPath);
     
-    function escapeCSV(str) {
-        return "\"" + (str || "").replace(/"/g, "\"\"") + "\"";
+    function escapeCSV(val) {
+        const str = formatField(val);
+        return "\"" + str.replace(/"/g, "\"\"") + "\"";
     }
     
     if (!hasCsv) {
