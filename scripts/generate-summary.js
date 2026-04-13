@@ -37,6 +37,12 @@ const child = spawn("gemini", ["-m", "gemini-2.5-flash"], {
 });
 
 // Pass the combined prompt as stdin
+// Prevent unhandled EPIPE crash if the child process exits immediately (e.g. missing API key)
+child.stdin.on("error", (err) => {
+    if (err.code !== "EPIPE") {
+        console.error("Stdin error:", err);
+    }
+});
 child.stdin.write(prompt);
 child.stdin.end();
 
