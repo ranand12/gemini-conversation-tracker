@@ -36,15 +36,21 @@ const child = spawn("gemini", ["-m", "gemini-2.5-flash"], {
     env: Object.assign({}, process.env, { SKIP_GEMINI_TRACKER: "1" })
 });
 
-// Pass the combined prompt as stdin
 // Prevent unhandled EPIPE crash if the child process exits immediately (e.g. missing API key)
 child.stdin.on("error", (err) => {
     if (err.code !== "EPIPE") {
         console.error("Stdin error:", err);
     }
 });
+
+// Pass the combined prompt as stdin
 child.stdin.write(prompt);
 child.stdin.end();
+
+child.on("error", (err) => {
+    // If spawn fails entirely (e.g. gemini not found in PATH)
+    fs.writeFileSync(config.summaryPath, "**Error generating summary:** `gemini` command failed to start.\n\n```\n" + err.message + "\n```");
+});
 
 let stdoutData = "";
 let stderrData = "";
@@ -85,26 +91,39 @@ child.on("close", code => {
     
     // Filter benign stderr logs
     if (stderrData) {
-        const filteredStderr = stderrData.split('\\n').filter(line => {
+        const filteredStderr = stderrData.split("\n").filter(line => {
             if (line.includes("Loading extension:")) return false;
             if (line.includes("MCP context refresh")) return false;
             if (line.includes("[IDEClient]")) return false;
             if (line.trim() === "") return false;
             return true;
-        }).join('\\n');
+        }).join("\n");
         
         if (filteredStderr.length > 0) {
-            rawLogs += `\nStderr:\n${filteredStderr}`;
+            rawLogs += "\nStderr:\n" + filteredStderr;
         }
     }
 
-    if (code !== 0) rawLogs += `\nProcess exited with code ${code}`;
+    if (code !== 0) rawLogs += "\nProcess exited with code " + code;
 
-    let markdownOutput = \`**🎯 Key Topics Discussed**\n\${keyTopics}\n\n**Session Details**\n- Project Folder: \${config.projectFolder}\n- Start Time: \${config.startTime}\n- End Time: \${config.endTime}\n- Total Duration: \${config.duration}\n\n**✅ Actions/Tasks Accomplished**\n\${actionsAccomplished}\n\n**🚀 Next Steps**\n\${nextSteps}\`;
+    let markdownOutput = `**🎯 Key Topics Discussed**
+${keyTopics}
+
+**Session Details**
+- Project Folder: ${config.projectFolder}
+- Start Time: ${config.startTime}
+- End Time: ${config.endTime}
+- Total Duration: ${config.duration}
+
+**✅ Actions/Tasks Accomplished**
+${actionsAccomplished}
+
+**🚀 Next Steps**
+${nextSteps}`;
     
-    rawLogs = rawLogs.replace(/^\\s*[\\r\\n]/gm, "").trim();
+    rawLogs = rawLogs.replace(/^\s*[\r\n]/gm, "").trim();
     if (rawLogs.length > 0) {
-        markdownOutput += \`\n\n---\n### 🔧 System & Meta Logs\n\\\`\\\`\\\`text\n\${rawLogs}\n\\\`\\\`\\\`\n\`;
+        markdownOutput += `\n\n---\n### 🔧 System & Meta Logs\n\`\`\`text\n${rawLogs}\n\`\`\`\n`;
     }
     
     // Write Markdown
@@ -115,11 +134,11 @@ child.on("close", code => {
     const hasCsv = fs.existsSync(csvPath);
     
     function escapeCSV(str) {
-        return "\\"" + (str || "").replace(/"/g, "\\"\\"") + "\\"";
+        return "\"" + (str || "").replace(/"/g, "\"\"") + "\"";
     }
     
     if (!hasCsv) {
-        fs.writeFileSync(csvPath, "Project Folder,Start Time,End Time,Total Duration,Key Topics,Next Steps\\n");
+        fs.writeFileSync(csvPath, "Project Folder,Start Time,End Time,Total Duration,Key Topics,Next Steps\n");
     }
     
     const csvLine = [
@@ -129,7 +148,7 @@ child.on("close", code => {
         escapeCSV(config.duration),
         escapeCSV(keyTopics),
         escapeCSV(nextSteps)
-    ].join(",") + "\\n";
+    ].join(",") + "\n";
     
     fs.appendFileSync(csvPath, csvLine);
     
