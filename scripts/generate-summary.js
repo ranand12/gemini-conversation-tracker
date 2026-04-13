@@ -32,7 +32,7 @@ ${logContent}
 `;
 
 // Using gemini-2.5-flash
-const child = spawn("gemini", ["-m", "gemini-2.5-flash-lite"], {
+const child = spawn("gemini", ["-m", "gemini-2.5-flash-lite", "--quiet"], {
     env: Object.assign({}, process.env, { SKIP_GEMINI_TRACKER: "1" })
 });
 
