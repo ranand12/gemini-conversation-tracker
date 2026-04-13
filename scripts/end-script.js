@@ -107,6 +107,7 @@ async function main() {
     const child = spawn("node", [generatorScript, configPath], {
         detached: true,
         stdio: "ignore",
+        env: process.env // Pass current environment (including GEMINI_API_KEY)
     });
     child.unref();
   }
