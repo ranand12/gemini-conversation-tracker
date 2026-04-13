@@ -64,8 +64,9 @@ child.on("close", code => {
     let nextSteps = "N/A";
     let rawLogs = "";
     
-    // Extract JSON safely
     const match = stdoutData.match(/<json>([\s\S]*?)<\/json>/i) || stdoutData.match(/```json([\s\S]*?)```/i);
+    let jsonParsed = false;
+    
     if (match) {
         try {
             let jsonString = match[1].trim();
@@ -74,18 +75,27 @@ child.on("close", code => {
             actionsAccomplished = parsed.actionsAccomplished || "N/A";
             nextSteps = parsed.nextSteps || "N/A";
             rawLogs = stdoutData.replace(match[0], "").trim();
+            jsonParsed = true;
         } catch (e) {
-            rawLogs = "JSON Parse Error: " + e.message + "\n\n" + stdoutData;
+            rawLogs = "JSON Parse Error on extracted block: " + e.message + "\n\n" + stdoutData;
         }
-    } else {
-        // Fallback: try parsing the whole thing if the model forgot tags
-        try {
-            const parsed = JSON.parse(stdoutData.trim());
-            keyTopics = parsed.keyTopics || "N/A";
-            actionsAccomplished = parsed.actionsAccomplished || "N/A";
-            nextSteps = parsed.nextSteps || "N/A";
-        } catch (e) {
-            rawLogs = "Failed to find <json> tags.\n\n" + stdoutData;
+    } 
+    
+    if (!jsonParsed) {
+        // Fallback: try finding ANY json object in the text if tags were forgotten
+        const jsonFallbackMatch = stdoutData.match(/\{[\s\S]*\}/);
+        if (jsonFallbackMatch) {
+            try {
+                const parsed = JSON.parse(jsonFallbackMatch[0]);
+                keyTopics = parsed.keyTopics || "N/A";
+                actionsAccomplished = parsed.actionsAccomplished || "N/A";
+                nextSteps = parsed.nextSteps || "N/A";
+                rawLogs = stdoutData.replace(jsonFallbackMatch[0], "").trim();
+            } catch (e) {
+                rawLogs = "Failed to parse JSON fallback.\n\n" + stdoutData;
+            }
+        } else {
+            rawLogs = "Failed to find <json> tags or JSON payload.\n\n" + stdoutData;
         }
     }
     
