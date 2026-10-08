@@ -19,3 +19,7 @@ gemini extensions install https://github.com/your-username/gemini-conversation-t
 
 ## Usage
 Simply run `gemini` normally. Once you type `exit` or press `Ctrl+C`, the extension will automatically do its work in the background. Check the `conversation_history/` folder for the results!
+
+## Disclaimer
+
+This repository and its contents are provided for illustration and educational purposes only as example code. This is not an official Google product or officially supported Google Cloud project. This code is provided as-is for demonstration purposes and is NOT intended or supported for production workloads. The views, code, and opinions expressed in this repository are those of the author(s) and do not necessarily reflect the position, opinions, or official policy of Google LLC or Google Cloud Platform.
